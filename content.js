@@ -1,10 +1,10 @@
 (function () {
     let lastUpdate = 0;
-    const updateInterval = 2000; // update every 2 seconds
+    const updateInterval = 1000; // update every 1 second
 
     function updateUrlTime() {
         const video = document.querySelector("video.video-stream.html5-main-video");
-        if (!video) return;
+        if (!video || !new URL(window.location.href).searchParams.has("v")) return;
 
         const now = Date.now();
         if (now - lastUpdate < updateInterval) return; // limit updates
@@ -24,7 +24,7 @@
 
     function init() {
         const video = document.querySelector("video");
-        if (!video) return;
+        if (!video || !new URL(window.location.href).searchParams.has("v")) return;
 
         video.addEventListener("timeupdate", updateUrlTime);
     }
