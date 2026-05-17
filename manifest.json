@@ -2,7 +2,7 @@
     "manifest_version": 3,
     "name": "YouTube Timestamp Sync",
     "version": "1.1",
-    "description": "Remembers your playback position on YouTube and prompts you to continue where you left off.",
+    "description": "Remembers your playback position on YouTube and offers to reload with a timestamp to continue watching.",
     "permissions": [
         "storage"
     ],
