@@ -155,7 +155,7 @@ function showResumePrompt(videoId, seconds) {
 }
 
 /**
- * @param {HTMLVideoElement} [video]
+ * @param {HTMLVideoElement} video
  */
 async function maybePromptResume(video) {
     const videoId = getVideoId();
@@ -165,9 +165,9 @@ async function maybePromptResume(video) {
     if (!saved || saved.seconds < MIN_RESUME_SECONDS) return;
 
     const urlT = urlTimestampSeconds();
-    if (urlT !== null && urlT >= saved.seconds - 2) return;
+    if (urlT !== null && urlT >= saved.seconds) return;
 
-    if (video && video.currentTime >= saved.seconds - 2) return;
+    if (video.currentTime >= saved.seconds) return;
 
     showResumePrompt(videoId, saved.seconds);
 }
@@ -210,8 +210,6 @@ function init() {
             console.debug("[timestamp-sync] Listener attached to video element.");
         }
         maybePromptResume(video);
-    } else {
-        maybePromptResume();
     }
 }
 
