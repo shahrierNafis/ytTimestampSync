@@ -26,16 +26,29 @@ function getVideoId() {
     return id || null;
 }
 
+function rawUrlTimestamp() {
+    const t = new URL(window.location.href).searchParams.get("t");
+    return t === null ? null : t;
+}
+
 /**
  * Parses the `t` query parameter as whole seconds, or null when absent/invalid.
  *
  * @returns {number|null}
  */
 function urlTimestampSeconds() {
-    const t = new URL(window.location.href).searchParams.get("t");
-    if (t === null || t === "") return null;
-    const seconds = parseInt(t, 10);
-    return Number.isNaN(seconds) ? null : seconds;
+    const raw = rawUrlTimestamp();
+    if (raw === null || raw === "") return null;
+
+    const normalized = raw.replace(/\s+/g, "");
+    if (!/^\d+$/.test(normalized)) return null;
+
+    const seconds = Number(normalized);
+    return Number.isSafeInteger(seconds) ? seconds : null;
+}
+
+function isSpaceifiedUrlTimestamp(value) {
+    return value !== null && /\s/.test(value);
 }
 
 /**
@@ -101,14 +114,48 @@ function clearPosition(videoId) {
 }
 
 /**
- * Navigates to the same watch URL with ?t= set (full page load).
+ * Seeks the current video directly without rewriting the URL.
  *
+ * @param {HTMLVideoElement} video
  * @param {number} seconds
  */
-function reloadWithTimestamp(seconds) {
-    const url = new URL(window.location.href);
-    url.searchParams.set("t", String(seconds));
-    window.location.href = url.toString();
+function seekToTimestamp(video, seconds) {
+    try {
+        video.currentTime = Math.max(0, seconds);
+    } catch (_) {
+        /* ignore */
+    }
+}
+
+/**
+ * Attempts to resume playback if the video is paused.
+ *
+ * @param {HTMLVideoElement} video
+ */
+function resumePlayback(video) {
+    if (!video.paused) return;
+    video.play().catch(() => {
+        /* ignore */
+    });
+}
+
+/**
+ * Repeatedly seeks and resumes playback up to three times to handle delayed metadata.
+ *
+ * @param {HTMLVideoElement} video
+ * @param {number} seconds
+ */
+function seekAndResume(video, seconds) {
+    const attemptSeek = (attempt) => {
+        seekToTimestamp(video, seconds);
+        resumePlayback(video);
+
+        if (attempt < 2 && Math.abs(video.currentTime - seconds) > 1) {
+            setTimeout(() => attemptSeek(attempt + 1), 250);
+        }
+    };
+
+    attemptSeek(0);
 }
 
 /**
@@ -126,12 +173,13 @@ function pauseAllVideos() {
 
 /**
  * Blocking native confirm — pauses the main thread until the user responds.
- * On accept, sets ?t= and reloads; on decline, clears the saved position.
+ * On accept, seeks the current video directly; on decline, clears the saved position.
  *
  * @param {string} videoId
  * @param {number} seconds
+ * @param {HTMLVideoElement} video
  */
-function showResumePrompt(videoId, seconds) {
+function showResumePrompt(videoId, seconds, video) {
     if (promptShownFor === videoId || promptInProgress) return;
 
     promptInProgress = true;
@@ -144,8 +192,9 @@ function showResumePrompt(videoId, seconds) {
     );
 
     if (resume) {
-        console.debug(`[timestamp-sync] Reloading with ?t=${seconds}`);
-        reloadWithTimestamp(seconds);
+        console.debug(`[timestamp-sync] Seeking to ${seconds}s in the current video.`);
+        seekAndResume(video, seconds);
+        promptInProgress = false;
         return;
     }
 
@@ -161,6 +210,20 @@ async function maybePromptResume(video) {
     const videoId = getVideoId();
     if (!videoId || promptShownFor === videoId || promptInProgress) return;
 
+    const raw = rawUrlTimestamp();
+    if (isSpaceifiedUrlTimestamp(raw)) {
+        const useUrlTimestamp = confirm(
+            `The URL timestamp "${raw}" looks unusual. Use it or ignore it?`
+        );
+        if (useUrlTimestamp) {
+            const parsed = urlTimestampSeconds();
+            if (parsed !== null) {
+                seekAndResume(video, parsed);
+                return;
+            }
+        }
+    }
+
     const saved = await loadPosition(videoId);
     if (!saved || saved.seconds < MIN_RESUME_SECONDS) return;
 
@@ -169,7 +232,7 @@ async function maybePromptResume(video) {
 
     if (video.currentTime >= saved.seconds) return;
 
-    showResumePrompt(videoId, saved.seconds);
+    showResumePrompt(videoId, saved.seconds, video);
 }
 
 function persistPlaybackTime() {
